@@ -63,8 +63,13 @@ class CeleryASG(Celery):
 
     def list_running_ec2_instances(self):
         asg_client = boto3.client('autoscaling', region_name=self.aws_region)
-        asg_instances = [i for i in asg_client.describe_auto_scaling_instances()['AutoScalingInstances']
-                         if i['AutoScalingGroupName'] == self.asg_name]
+
+        asg_instances = []
+        asg_instances_paginator = asg_client.get_paginator('describe_auto_scaling_instances')
+        for response in asg_instances_paginator.paginate():
+            for instance in response['AutoScalingInstances']:
+                if instance['AutoScalingGroupName'] == self.asg_name:
+                    asg_instances.append(instance)
 
         ec2_client = boto3.client('ec2', region_name=self.aws_region)
         ec2_instances = ec2_client.describe_instances(InstanceIds=[i['InstanceId'] for i in asg_instances])
