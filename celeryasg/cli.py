@@ -12,6 +12,7 @@ Options:
 
 from docopt import docopt
 from celeryasg import __version__
+from celeryasg.core import CeleryASG
 
 
 def run(asg_name, broker):

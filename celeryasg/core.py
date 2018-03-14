@@ -2,6 +2,7 @@
 
 import os
 import math
+import pytz
 import boto3
 from datetime import datetime, timedelta
 from celery import Celery
@@ -56,7 +57,7 @@ class CeleryASG(Celery):
         inactive_instances = [i for i in ec2_instances if not i['workers']]
 
         if cooldown_period is not None:
-            t0 = datetime.now() - timedelta(seconds=cooldown_period)
+            t0 = (datetime.utcnow() - timedelta(seconds=cooldown_period)).replace(tzinfo=pytz.utc)
             inactive_instances = [i for i in inactive_instances if i['LaunchTime'] < t0]
 
         return inactive_instances
@@ -64,13 +65,7 @@ class CeleryASG(Celery):
     def list_running_ec2_instances(self):
         asg_client = boto3.client('autoscaling', region_name=self.aws_region)
 
-        asg_instances = []
-        asg_instances_paginator = asg_client.get_paginator('describe_auto_scaling_instances')
-        for response in asg_instances_paginator.paginate():
-            for instance in response['AutoScalingInstances']:
-                if instance['AutoScalingGroupName'] == self.asg_name:
-                    asg_instances.append(instance)
-
+        asg_instances = self._asg_instances()
         ec2_client = boto3.client('ec2', region_name=self.aws_region)
         ec2_instances = ec2_client.describe_instances(InstanceIds=[i['InstanceId'] for i in asg_instances])
 
@@ -99,13 +94,12 @@ class CeleryASG(Celery):
         assert instance is not None and instance != []
         asg_client = boto3.client('autoscaling', region_name=self.aws_region)
         return asg_client.terminate_instance_in_auto_scaling_group(
-                InstanceId=instance['InstanceId'],
-                ShouldDecrementDesiredCapacity=True)
+                 InstanceId=instance['InstanceId'],
+                 ShouldDecrementDesiredCapacity=True)
 
     def auto_balance(self, factor=0.5):
         asg_client = boto3.client('autoscaling', region_name=self.aws_region)
-        asg_instances = [i for i in asg_client.describe_auto_scaling_instances()
-                         if i['AutoScalingGroupName'] == self.asg_name]
+        asg_instances = self._asg_instances()
 
         instances_count = len(asg_instances)
         messages_count = self.get_pending_count()
@@ -125,4 +119,16 @@ class CeleryASG(Celery):
         aws_client.set_desired_capacity(n, AutoScalingGroupName=self.asg_name)
 
         return n
+
+    def _asg_instances(self):
+        asg_client = boto3.client('autoscaling', region_name=self.aws_region)
+
+        asg_instances = []
+        asg_instances_paginator = asg_client.get_paginator('describe_auto_scaling_instances')
+        for response in asg_instances_paginator.paginate():
+            for instance in response['AutoScalingInstances']:
+                if instance['AutoScalingGroupName'] == self.asg_name:
+                    asg_instances.append(instance)
+        return asg_instances
+
 
