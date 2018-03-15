@@ -109,7 +109,7 @@ class CeleryASG(Celery):
             raise RuntimeError('Auto Scaling Group "{}" not found'.format(self.asg_name))
 
         n = min(n, info['AutoScalingGroups'][0]['MaxSize'])
-        aws_client.set_desired_capacity(n, AutoScalingGroupName=self.asg_name)
+        asg_client.set_desired_capacity(n, AutoScalingGroupName=self.asg_name)
 
         return n
 
