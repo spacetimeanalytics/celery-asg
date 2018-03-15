@@ -8,15 +8,13 @@ from datetime import datetime, timedelta
 from celery import Celery
 
 
-QUEUE_NAME = os.getenv('CELERY_DEFAULT_QUEUE', 'celery')
-
-
 class CeleryASG(Celery):
 
-    def __init__(self, asg_name, aws_region=None, *args, **kwargs):
+    def __init__(self, asg_name, aws_region=None, queue_name=None, *args, **kwargs):
         super(CeleryASG, self).__init__(*args, **kwargs)
         self.asg_name = asg_name
         self.aws_region = aws_region
+        self.queue_name = queue_name if queue_name else os.getenv('CELERY_DEFAULT_QUEUE', 'celery')
         self._inspector = None
 
     @property
@@ -28,17 +26,9 @@ class CeleryASG(Celery):
     def get_active_workers(self):
         return self.inspector.active()
 
-    def get_counts(self):
-        return {
-            'count_active': self.inspector.active(),
-            'count_scheduled': self.inspector.scheduled(),
-            'count_reserved': self.inspector.reserved(),
-            'count_messages': self.get_pending_count()
-        }
-
     def get_pending_count(self):
         with self.inspector.app.connection_or_acquire() as conn:
-            queue = conn.default_channel.queue_declare(queue=QUEUE_NAME, passive=True)
+            queue = conn.default_channel.queue_declare(queue=self.queue_name, passive=True)
             return queue.message_count
 
     def find_inactive_instances(self, cooldown_period=300):
@@ -51,7 +41,7 @@ class CeleryASG(Celery):
         for ec2_instance in ec2_instances:
             ec2_instance['workers'] = []
             for ip, worker in active_workers.items():
-                if ec2_instance['ip'] in ip:
+                if ec2_instance['PublicIp'] == ip:
                     ec2_insitances['workers'].append(worker)
 
         inactive_instances = [i for i in ec2_instances if not i['workers']]
@@ -66,6 +56,9 @@ class CeleryASG(Celery):
         asg_client = boto3.client('autoscaling', region_name=self.aws_region)
 
         asg_instances = self._asg_instances()
+        if not asg_instances:
+            return []
+
         ec2_client = boto3.client('ec2', region_name=self.aws_region)
         ec2_instances = ec2_client.describe_instances(InstanceIds=[i['InstanceId'] for i in asg_instances])
 
@@ -130,5 +123,3 @@ class CeleryASG(Celery):
                 if instance['AutoScalingGroupName'] == self.asg_name:
                     asg_instances.append(instance)
         return asg_instances
-
-

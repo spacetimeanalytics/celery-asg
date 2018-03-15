@@ -3,7 +3,7 @@
 Celery ASG
 
 Usage:
-  celery-asg --asg-name <auto-scaling-group-name> --broker <celery-broker-url>
+  celery-asg --asg-name=<auto-scaling-group-name> --broker=<celery-broker-url> [--queue=<queue-name>]
 
 Options:
   -h --help      Show this screen.
@@ -15,7 +15,7 @@ from celeryasg import __version__
 from celeryasg.core import CeleryASG
 
 
-def run(asg_name, broker):
+def run(asg_name, broker, queue_name):
     celery = CeleryASG(asg_name=asg_name, broker=broker)
     inactive_instances = celery.find_inactive_instances()
     for instance in inactive_instances:
@@ -30,8 +30,10 @@ def run(asg_name, broker):
 
 def entrypoint():
     args = docopt(__doc__, version=__version__)
-    run(args['<auto-scaling-group-name>'],
-        args['<celery-broker-url>'])
+
+    run(args['--asg-name'],
+        args['--broker'],
+        args['--queue'])
 
 
 if __name__ == '__main__':
