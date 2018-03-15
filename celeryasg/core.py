@@ -40,9 +40,11 @@ class CeleryASG(Celery):
 
         for ec2_instance in ec2_instances:
             ec2_instance['workers'] = []
-            for ip, worker in active_workers.items():
+            for worker_name, tasks in active_workers.items():
+                _, ip = worker_name.split('@', 1)
                 if ec2_instance['PublicIp'] == ip:
-                    ec2_insitances['workers'].append(worker)
+                    for task in tasks:
+                        ec2_instance['workers'].append(task)
 
         inactive_instances = [i for i in ec2_instances if not i['workers']]
 
