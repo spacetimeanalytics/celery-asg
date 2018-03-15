@@ -83,14 +83,19 @@ class CeleryASG(Celery):
                 })
         return running_instances
 
-    def shutdown_instance(self, instance):
+    def shutdown_instance(self, instance, dryrun=False):
         assert instance is not None and instance != []
+
+        if dryrun:
+            print('Shuting down instance: {}'.format(repr(instance)))
+            return
+
         asg_client = boto3.client('autoscaling', region_name=self.aws_region)
         return asg_client.terminate_instance_in_auto_scaling_group(
                  InstanceId=instance['InstanceId'],
                  ShouldDecrementDesiredCapacity=True)
 
-    def auto_balance(self, factor=0.5):
+    def auto_balance(self, factor=0.5, dryrun=False):
         asg_client = boto3.client('autoscaling', region_name=self.aws_region)
         asg_instances = self._asg_instances()
 
@@ -98,8 +103,11 @@ class CeleryASG(Celery):
         messages_count = self.get_pending_count()
 
         if messages_count * factor > instances_count:
-            new_desired = math.ceil(messages_count / 2)
-            self.set_asg_desired(new_desired)
+            new_desired = math.ceil(messages_count * factor)
+            if dryrun:
+                print('Desired: {}'.format(new_desired))
+            else:
+                self.set_asg_desired(new_desired)
             return new_desired
 
     def set_asg_desired(self, n):
